@@ -69,6 +69,11 @@ class ReleaseFiles {
 		}
 	}
 
+	public boolean anyFilesFound() {
+		return conceptSnapshot != null || descriptionSnapshot != null || textDefinitionSnapshot != null
+				|| relationshipSnapshot != null || !refsetSnapshots.isEmpty();
+	}
+
 	@Override
 	public String toString() {
 		return "ReleaseFiles{" +

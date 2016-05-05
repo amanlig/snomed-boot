@@ -41,28 +41,58 @@ public class ReleaseImporter {
 	}
 
 	public Map<Long, ? extends Concept> loadReleaseFiles(String releaseDirPath, LoadingProfile loadingProfile) throws IOException, InterruptedException {
-		ReleaseFiles releaseFiles = findFiles(releaseDirPath);
-		logger.info("Loading release files {}", releaseFiles);
-		loadConcepts(releaseFiles.getConceptSnapshot(), loadingProfile);
+		ReleaseFiles internationalReleaseFiles = findFiles(releaseDirPath, "_INT_");
+		ReleaseFiles extensionReleaseFiles = findFiles(releaseDirPath, null);
 
-		List<Callable<String>> tasks = new ArrayList<>();
-		tasks.add(loadRelationships(releaseFiles.getRelationshipSnapshot(), loadingProfile));
-		tasks.add(loadDescriptions(releaseFiles.getDescriptionSnapshot(), loadingProfile));
-		if (!loadingProfile.getRefsetIds().isEmpty()) {
-			final List<Path> refsetSnapshots = releaseFiles.getRefsetSnapshots();
-			for (Path refsetSnapshot : refsetSnapshots) {
-				tasks.add(loadRefsets(refsetSnapshot, loadingProfile));
-			}
+		logger.info("International release files to be loaded {}", internationalReleaseFiles);
+		if (extensionReleaseFiles.anyFilesFound()) {
+			logger.info("Extension release files to be loaded {}", internationalReleaseFiles);
 		}
 
-		executorService.invokeAll(tasks);
+		logger.info("Loading International concepts");
+		loadConcepts(internationalReleaseFiles.getConceptSnapshot(), loadingProfile);
+		if (extensionReleaseFiles.getConceptSnapshot() != null) {
+			logger.info("Loading Extension concepts");
+			loadConcepts(extensionReleaseFiles.getConceptSnapshot(), loadingProfile);
+
+		}
+		logger.info("Loading remaining International files");
+		loadReleaseFileSet(internationalReleaseFiles, loadingProfile);
+		logger.info("International files loaded");
+
+		if (extensionReleaseFiles.anyFilesFound()) {
+			logger.info("Loading remaining Extension files");
+			loadReleaseFileSet(extensionReleaseFiles, loadingProfile);
+			logger.info("Extension files loaded");
+		}
 
 		logger.info("All in memory. Using approx {} MB of memory.", formatAsMB(Runtime.getRuntime().totalMemory()));
 
 		return componentStore.getConcepts();
 	}
 
-	private ReleaseFiles findFiles(String releaseDirPath) throws IOException {
+	private void loadReleaseFileSet(ReleaseFiles releaseFiles, LoadingProfile loadingProfile) throws IOException, InterruptedException {
+		List<Callable<String>> tasks = new ArrayList<>();
+		if (releaseFiles.getRelationshipSnapshot() != null) {
+			tasks.add(loadRelationships(releaseFiles.getRelationshipSnapshot(), loadingProfile));
+		}
+		if (releaseFiles.getDescriptionSnapshot() != null) {
+			tasks.add(loadDescriptions(releaseFiles.getDescriptionSnapshot(), loadingProfile));
+		}
+		if (!loadingProfile.getRefsetIds().isEmpty()) {
+			addRefsetLoadingTasks(releaseFiles.getRefsetSnapshots(), loadingProfile, tasks);
+		}
+
+		executorService.invokeAll(tasks);
+	}
+
+	private void addRefsetLoadingTasks(List<Path> refsetSnapshots, LoadingProfile loadingProfile, List<Callable<String>> tasks) throws IOException {
+		for (Path refsetSnapshot : refsetSnapshots) {
+			tasks.add(loadRefsets(refsetSnapshot, loadingProfile));
+		}
+	}
+
+	private ReleaseFiles findFiles(String releaseDirPath, final String fileFilter) throws IOException {
 		final File releaseDir = new File(releaseDirPath);
 		if (!releaseDir.isDirectory()) {
 			throw new FileNotFoundException("Could not find release directory.");
@@ -75,15 +105,15 @@ public class ReleaseImporter {
 			public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
 				final String fileName = file.getFileName().toString();
 				if (fileName.endsWith(".txt")) {
-					if (fileName.startsWith("sct2_Concept_Snapshot")) {
+					if (fileName.startsWith("sct2_Concept_Snapshot") && matchesFilter(fileName, fileFilter)) {
 						releaseFiles.setConceptSnapshot(file);
-					} else if (fileName.startsWith("sct2_Description_Snapshot")) {
+					} else if (fileName.startsWith("sct2_Description_Snapshot") && matchesFilter(fileName, fileFilter)) {
 						releaseFiles.setDescriptionSnapshot(file);
-					} else if (fileName.startsWith("sct2_TextDefinition_Snapshot")) {
+					} else if (fileName.startsWith("sct2_TextDefinition_Snapshot") && matchesFilter(fileName, fileFilter)) {
 						releaseFiles.setTextDefinitionSnapshot(file);
-					} else if (fileName.startsWith("sct2_Relationship_Snapshot")) {
+					} else if (fileName.startsWith("sct2_Relationship_Snapshot") && matchesFilter(fileName, fileFilter)) {
 						releaseFiles.setRelationshipSnapshot(file);
-					} else if (fileName.startsWith("der2_")) {
+					} else if (fileName.startsWith("der2_") && matchesFilter(fileName, fileFilter)) {
 						releaseFiles.getRefsetSnapshots().add(file);
 					}
 				}
@@ -94,6 +124,10 @@ public class ReleaseImporter {
 		releaseFiles.assertFullSet();
 
 		return releaseFiles;
+	}
+
+	private boolean matchesFilter(String fileName, String fileFilter) {
+		return fileFilter == null || fileName.contains(fileFilter);
 	}
 
 	private void loadConcepts(Path rf2File, final LoadingProfile loadingProfile) throws IOException {
