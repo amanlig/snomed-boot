@@ -4,16 +4,13 @@ import org.ihtsdo.otf.snomedboot.domain.Concept;
 import org.ihtsdo.otf.snomedboot.domain.ConceptConstants;
 import org.ihtsdo.otf.snomedboot.domain.rf2.*;
 import org.ihtsdo.otf.snomedboot.factory.ComponentFactory;
+import org.ihtsdo.otf.snomedboot.factory.LoadingProfile;
 import org.ihtsdo.otf.snomedboot.factory.implementation.standard.ComponentFactoryImpl;
 import org.ihtsdo.otf.snomedboot.factory.implementation.standard.ConceptImpl;
-import org.ihtsdo.otf.snomedboot.factory.LoadingProfile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
+import java.io.*;
 import java.nio.charset.Charset;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -29,6 +26,18 @@ import java.util.concurrent.Executors;
 public class ReleaseImporter {
 
 	public static final Charset UTF_8 = Charset.forName("UTF-8");
+	public static final FilenameFilter INT_FILENAME_FILTER = new FilenameFilter() {
+		@Override
+		public boolean accept(File dir, String name) {
+			return name.contains("_INT_");
+		}
+	};
+	public static final FilenameFilter EXTENSION_FILENAME_FILTER = new FilenameFilter() {
+		@Override
+		public boolean accept(File dir, String name) {
+			return !name.contains("_INT_");
+		}
+	};
 	private final ComponentFactory componentFactory;
 	private final ComponentStore componentStore;
 	private final ExecutorService executorService;
@@ -41,8 +50,8 @@ public class ReleaseImporter {
 	}
 
 	public Map<Long, ? extends Concept> loadReleaseFiles(String releaseDirPath, LoadingProfile loadingProfile) throws IOException, InterruptedException {
-		ReleaseFiles internationalReleaseFiles = findFiles(releaseDirPath, "_INT_");
-		ReleaseFiles extensionReleaseFiles = findFiles(releaseDirPath, null);
+		ReleaseFiles internationalReleaseFiles = findFiles(releaseDirPath, INT_FILENAME_FILTER);
+		ReleaseFiles extensionReleaseFiles = findFiles(releaseDirPath, EXTENSION_FILENAME_FILTER);
 
 		logger.info("International release files to be loaded {}", internationalReleaseFiles);
 		if (extensionReleaseFiles.anyFilesFound()) {
@@ -92,7 +101,7 @@ public class ReleaseImporter {
 		}
 	}
 
-	private ReleaseFiles findFiles(String releaseDirPath, final String fileFilter) throws IOException {
+	private ReleaseFiles findFiles(String releaseDirPath, final FilenameFilter filenameFilter) throws IOException {
 		final File releaseDir = new File(releaseDirPath);
 		if (!releaseDir.isDirectory()) {
 			throw new FileNotFoundException("Could not find release directory.");
@@ -105,16 +114,18 @@ public class ReleaseImporter {
 			public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
 				final String fileName = file.getFileName().toString();
 				if (fileName.endsWith(".txt")) {
-					if (fileName.startsWith("sct2_Concept_Snapshot") && matchesFilter(fileName, fileFilter)) {
-						releaseFiles.setConceptSnapshot(file);
-					} else if (fileName.startsWith("sct2_Description_Snapshot") && matchesFilter(fileName, fileFilter)) {
-						releaseFiles.setDescriptionSnapshot(file);
-					} else if (fileName.startsWith("sct2_TextDefinition_Snapshot") && matchesFilter(fileName, fileFilter)) {
-						releaseFiles.setTextDefinitionSnapshot(file);
-					} else if (fileName.startsWith("sct2_Relationship_Snapshot") && matchesFilter(fileName, fileFilter)) {
-						releaseFiles.setRelationshipSnapshot(file);
-					} else if (fileName.startsWith("der2_") && matchesFilter(fileName, fileFilter)) {
-						releaseFiles.getRefsetSnapshots().add(file);
+					if (filenameFilter.accept(file.getParent().toFile(), fileName)) {
+						if (fileName.startsWith("sct2_Concept_Snapshot")) {
+							releaseFiles.setConceptSnapshot(file);
+						} else if (fileName.startsWith("sct2_Description_Snapshot")) {
+							releaseFiles.setDescriptionSnapshot(file);
+						} else if (fileName.startsWith("sct2_TextDefinition_Snapshot")) {
+							releaseFiles.setTextDefinitionSnapshot(file);
+						} else if (fileName.startsWith("sct2_Relationship_Snapshot")) {
+							releaseFiles.setRelationshipSnapshot(file);
+						} else if (fileName.startsWith("der2_")) {
+							releaseFiles.getRefsetSnapshots().add(file);
+						}
 					}
 				}
 				return FileVisitResult.CONTINUE;
