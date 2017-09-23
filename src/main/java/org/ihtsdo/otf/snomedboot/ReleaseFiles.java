@@ -62,8 +62,8 @@ class ReleaseFiles {
 			throw new FileNotFoundException("Concept RF2 file not found.");
 		} else if (descriptionSnapshot == null) {
 			throw new FileNotFoundException("Description RF2 file not found.");
-		} else if (textDefinitionSnapshot == null) {
-			throw new FileNotFoundException("TextDefinition RF2 file not found.");
+//		} else if (textDefinitionSnapshot == null) {
+//			throw new FileNotFoundException("TextDefinition RF2 file not found.");
 		} else if (relationshipSnapshot == null) {
 			throw new FileNotFoundException("Relationship RF2 file not found.");
 		}
